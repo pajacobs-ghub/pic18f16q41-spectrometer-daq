@@ -1,0 +1,20 @@
+Pin allocations for PIC18F16Q41-I/P supervisor talking SPI to AVR64EA28
+PJ 2024-09-05
+
+                 PIC18F16Q41
+                +-----v-----+
+Vsys          1 | VDD   VSS | 20           GND
+CTS1          2 | RA5   RA0 | 19       ICSPDAT
+RTS1          3 | RA4   RA1 | 18       ICSPCLK
+MCLR#         4 | RA3   RA2 | 17           LED
+CSan          5 | RC5   RC0 | 16           TX1
+CSbn          6 | RC4   RC1 | 15           RX1
+CScn          7 | RC3   RC2 | 14       OPA1OUT
+CSdn          8 | RC6   RB4 | 13          SDI1
+CSen          9 | RC7   RB5 | 12          SDO1
+RESTART#     10 | RB7   RB6 | 11          SCK1
+                +-----------+
+
+Notes: 
+(1) OPA1OUT is kept available for providing Vmid.
+
