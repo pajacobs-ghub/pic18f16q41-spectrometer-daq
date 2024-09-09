@@ -65,7 +65,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.1 PIC18F16Q41 SPECTROMETER COMMS-MCU 2024-09-07"
+#define VERSION_STR "v0.2 PIC18F16Q41 SPECTROMETER COMMS-MCU 2024-09-09"
 
 #define GREENLED (LATAbits.LATA2)
 #define RESTARTn (LATBbits.LATB7)
@@ -181,10 +181,10 @@ char bufA[NBUFA];
 #define NBUFB 268
 char bufB[NBUFB];
 // For incoming SPI data
-#define NBUFC 64
+#define NBUFC 32
 uint8_t bufC[NBUFC];
 // For outgoing SPI data
-#define NBUFD 64
+#define NBUFD 32
 uint8_t bufD[NBUFD];
 
 void interpret_command(char* cmdStr)
@@ -199,11 +199,12 @@ void interpret_command(char* cmdStr)
     // nchar = printf("DEBUG: cmdStr=%s", cmdStr);
     switch (cmdStr[0]) {
         case 'v':
+            // Echo the version string for the PIC18 firmware.
             nchar = snprintf(bufB, NBUFB, "v %s\n", VERSION_STR);
             uart1_putstr(bufB);
             break;
         case 'R':
-            // Restart the attached AVR MCU.
+            // Restart the attached AVR MCU(s).
             RESTARTn = 0;
             __delay_ms(1);
             RESTARTn = 1;
@@ -214,7 +215,7 @@ void interpret_command(char* cmdStr)
             uart1_putstr(bufB);
             break;
         case 'L':
-            // Turn LED on or off.
+            // Turn (local) PIC18 LED on or off.
             token_ptr = strtok(&cmdStr[1], sep_tok);
             if (token_ptr) {
                 // Found some non-blank text; assume on/off value.
@@ -230,6 +231,8 @@ void interpret_command(char* cmdStr)
             break;
         case 'X':
             // Exchange bytes with one of the AVR MCUs.
+            // Form of this command:
+            // X <csi> <b0> <b1> <b2> <b3> ...
             token_ptr = strtok(&cmdStr[1], sep_tok);
             if (token_ptr) {
                 // Found some text, use it for chip selection.
@@ -244,7 +247,7 @@ void interpret_command(char* cmdStr)
                         ++j;
                         token_ptr = strtok(NULL, sep_tok);
                     }
-                    nchar = printf("DEBUG Found %d bytes\n", j);
+                    nchar = printf("DEBUG csi=%d plus Found %d bytes to send over SPI\n", csi, j);
                     select_avr(csi);
                     spi1_exch_buffers(bufC, bufD, j);
                     deselect_avr(csi);
