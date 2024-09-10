@@ -65,7 +65,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.2 PIC18F16Q41 SPECTROMETER COMMS-MCU 2024-09-09"
+#define VERSION_STR "v0.3 PIC18F16Q41 SPECTROMETER COMMS-MCU 2024-09-10"
 
 #define GREENLED (LATAbits.LATA2)
 #define RESTARTn (LATBbits.LATB7)
@@ -147,7 +147,7 @@ void spi1_init()
     SPI1CON2bits.TXR = 1;
     SPI1CON2bits.RXR = 1;
     SPI1CLKbits.CLKSEL = 0b00000; // Fosc system clock
-    SPI1BAUD = 32; // 64MHz/32 = 2MHz SPI baud rate
+    SPI1BAUD = 15; // 64MHz/(2*(15+1)) = 2MHz SPI baud rate
     SPI1STATUSbits.CLRBF = 1; // Clear buffers
     SPI1CON0bits.EN = 1; // Turn on peripheral.
 }
