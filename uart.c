@@ -5,6 +5,7 @@
 // PJ,
 // 2023-12-01 PIC18F16Q41 attached to a MAX3082 RS485 transceiver
 // 2024-09-05 Return to using full-duplex and RTS/CTS with an FTDI TTL-232-5V
+// 2025-09-26 Returning the future of RS485 comms.
 
 #include <xc.h>
 #include "global_defs.h"
@@ -16,39 +17,38 @@ void uart1_init(long baud)
 {
     // Follow recipe given in PIC18F16Q41 data sheet
     // Sections 34.2.1.8 and 34.2.2.1
-    // We are going to use hardware flow control CTSn/RTSn.
+    // We are going to use hardware control for the RS485
+    // but we are going to bypass CTSn/RTSn.
     unsigned int brg_value;
     //
-    // Configure PPS RX1=RC1, TX1=RC0, CTS1=RA5, RTS1=RA4
+    // Configure PPS RX1=RC1, TX1=RC0, TX1DE=RA2 
     GIE = 0;
     PPSLOCK = 0x55;
     PPSLOCK = 0xaa;
     PPSLOCKED = 0;
     U1RXPPS = 0b010001; // RC1
-    U1CTSPPS = 0b000101; // RA5
+    U1CTSPPS = 0b001011; // RB3 does not exist and should always read as 0
     RC0PPS = 0x10; // UART1 TX
-    RA4PPS = 0x12; // UART1 RTS
+    RA2PPS = 0x11; // UART1 TXDE
+    // Do not assign UART1RTS to any output pin.
     PPSLOCK = 0x55;
     PPSLOCK = 0xaa;
     PPSLOCKED = 1;
-    ANSELCbits.ANSELC0 = 0; // TX1 pin
+    ANSELCbits.ANSELC0 = 0; // TX pin
     TRISCbits.TRISC0 = 0; // output
-    ANSELAbits.ANSELA4 = 0; // RTS1 pin
-    TRISAbits.TRISA4 = 0; // output
+    ANSELAbits.ANSELA2 = 0; // TXDE pin
+    TRISAbits.TRISA2 = 0; // output
     ANSELCbits.ANSELC1 = 0; // Turn on digital input buffer for RX1
     TRISCbits.TRISC1 = 1; // RX1 is an input
-    ANSELAbits.ANSELA5 = 0; // Turn on digital input buffer for CTS1
-    TRISAbits.TRISA5 = 1; // CTS1 is an input
     //
     U1CON0bits.BRGS = 1;
     brg_value = (unsigned int) (FOSC/baud/4 - 1);
     // For 64MHz, 115200 baud, expect value of 137.
     //              9600 baud                 1665.
-    //            230400 baud                   68 for 0.6% error
     U1BRG = brg_value;
     //
     U1CON0bits.MODE = 0b0000; // Use 8N1 asynchronous
-    U1CON2bits.FLO = 0b10; // Hardware flow control (RTS/CTS)
+    U1CON2bits.FLO = 0b10; // Hardware flow control (TXDE)
     U1CON0bits.RXEN = 1;
     U1CON0bits.TXEN = 1;
     U1CON1bits.ON = 1;

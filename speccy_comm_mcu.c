@@ -3,6 +3,7 @@
 // differential-spectrometer data acquisition board.
 //
 // PJ, 2024-09-07: Implement the basic command interpreter.
+//     2025-09-26: Update to PCB specification.
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -65,25 +66,33 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.3 PIC18F16Q41 SPECTROMETER COMMS-MCU 2024-09-10"
+#define VERSION_STR "v0.4 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-09-26"
 
-#define GREENLED (LATAbits.LATA2)
-#define RESTARTn (LATBbits.LATB7)
-#define CS0n (LATCbits.LATC5)
-#define CS1n (LATCbits.LATC4)
-#define CS2n (LATCbits.LATC3)
-#define CS3n (LATCbits.LATC6)
-#define CS4n (LATCbits.LATC7)
+// Each device on the RS485 network has a unique single-character identity.
+// The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
+// When programming each device, select a suitable value for MYID.
+#define MYID 'D'
+
+#define LED (LATAbits.LATA4)
+uint8_t override_led = 0;
+
+#define AVR_RESETn (LATBbits.LATB7)
+
+#define AVR0_CSn (LATCbits.LATC5)
+#define AVR1_CSn (LATCbits.LATC4)
+#define AVR2_CSn (LATCbits.LATC3)
+#define AVR3_CSn (LATCbits.LATC6)
+#define AVR4_CSn (LATCbits.LATC7)
 
 void init_pins()
 {
-    // RA2 as digital-output for GREENLED.
-    TRISAbits.TRISA2 = 0;
-    GREENLED = 0;
+    // RA4 as digital-output for LED.
+    TRISAbits.TRISA4 = 0;
+    LED = 0;
     //
     // RB7 as digital-output for restart of DAQ_MCU
     ODCONBbits.ODCB7 = 1;
-    RESTARTn = 1;
+    AVR_RESETn = 1;
     TRISBbits.TRISB7 = 0;
     ANSELBbits.ANSELB7 = 0;
     //
@@ -98,22 +107,25 @@ void init_pins()
 void select_avr(uint8_t i)
 {
     switch (i) {
-        case 0: CS0n = 0; break;
-        case 1: CS1n = 0; break;
-        case 2: CS2n = 0; break;
-        case 3: CS3n = 0; break;
-        case 4: CS4n = 0; break;
+        case 0: AVR0_CSn = 0; break;
+        case 1: AVR1_CSn = 0; break;
+        case 2: AVR2_CSn = 0; break;
+        case 3: AVR3_CSn = 0; break;
+        case 4: AVR4_CSn = 0; break;
+        default: /* Do nothing */ {}
+            
     }
 }
 
 void deselect_avr(uint8_t i)
 {
     switch (i) {
-        case 0: CS0n = 1; break;
-        case 1: CS1n = 1; break;
-        case 2: CS2n = 1; break;
-        case 3: CS3n = 1; break;
-        case 4: CS4n = 1; break;
+        case 0: AVR0_CSn = 1; break;
+        case 1: AVR1_CSn = 1; break;
+        case 2: AVR2_CSn = 1; break;
+        case 3: AVR3_CSn = 1; break;
+        case 4: AVR4_CSn = 1; break;
+        default: /* Do nothing */ {}
     }
 }
 
@@ -187,7 +199,66 @@ uint8_t bufC[NBUFC];
 #define NBUFD 32
 uint8_t bufD[NBUFD];
 
-void interpret_command(char* cmdStr)
+int find_char(char* buf, int start, int end, char c)
+// Returns the index of the character if found, -1 otherwise.
+// start is the index of the first character to check.
+// end is the index of the last character to check.
+{
+    for (int i = start; i <= end; i++) {
+        if (buf[i] == '\0') return -1;
+        if (buf[i] == c) return i;
+    }
+    return -1;
+}
+
+char* trim_RS485_command(char* buf, int nbytes)
+// Returns a pointer to the command text string, within buf.
+// The resulting string may be zero-length.
+//
+// A valid incoming command from the RS485 will be of the form
+// "/cXXXXXXXX!"
+// where the components are
+//    / is the start character
+//    ! is the end character
+//    c is the MYID character, identifying the receiving node
+//    XXXXXXX is the command text
+//
+// This format is described in the text:
+// J.M. Hughes
+// Real World Instrumentation
+// O'Rielly 2010
+// Chapter 11 Instrumentation Data I/O, Unique Protocols.
+//
+{
+    // printf("DEBUG: buf=%s", buf);
+    int start = find_char(buf, 0, nbytes-1, '/');
+    if (start == -1) {
+        // Did not find starting '/'
+        buf[0] = '\0'; // make it a zero-length string
+        return &buf[0];
+    }
+    int end = find_char(buf, start, nbytes-1, '!');
+    if (end == -1) {
+        // Did not find terminating '!'
+        buf[0] = '\0'; // make it a zero-length string
+        return &buf[0];
+    }
+    // At this point, we have a valid incoming command.
+    if (buf[start+1] != MYID) {
+        // The incoming message is not for this node, so discard it.
+        buf[0] = '\0'; // make it a zero-length string
+        return &buf[0];
+    }
+    // At this point, the message is for us.
+    buf[end] = '\0'; // Trim off the '!' character.
+    // On return, omit the MYID character from the front.
+    return &buf[start+2];
+} // end trim_command()
+
+void interpret_RS485_command(char* cmdStr)
+// We intend that valid commands are answered quickly
+// so that the supervisory PC can infer the absence of a node
+// by the lack of a prompt response.
 // A command that does not do what is expected should return a message
 // that includes the word "error".
 {
@@ -196,22 +267,23 @@ void interpret_command(char* cmdStr)
     int nchar;
     uint8_t i, j;
     char number_str[10];
+    if (!override_led) LED = 1; // To indicate start of interpreter activity.
     // nchar = printf("DEBUG: cmdStr=%s", cmdStr);
     switch (cmdStr[0]) {
         case 'v':
             // Echo the version string for the PIC18 firmware.
-            nchar = snprintf(bufB, NBUFB, "v %s\n", VERSION_STR);
+            nchar = snprintf(bufB, NBUFB, "/0v %s#\n", VERSION_STR);
             uart1_putstr(bufB);
             break;
         case 'R':
             // Restart the attached AVR MCU(s).
-            RESTARTn = 0;
+            AVR_RESETn = 0;
             __delay_ms(1);
-            RESTARTn = 1;
+            AVR_RESETn = 1;
             // Wait until we are reasonably sure that the AVR has restarted
             // and then flush the incoming serial buffer.
             __delay_ms(350);
-            nchar = snprintf(bufB, NBUFB, "R DAQ_MCU restarted\n");
+            nchar = snprintf(bufB, NBUFB, "/0R DAQ_MCU restarted#\n");
             uart1_putstr(bufB);
             break;
         case 'L':
@@ -221,11 +293,12 @@ void interpret_command(char* cmdStr)
                 // Found some non-blank text; assume on/off value.
                 // Use just the least-significant bit.
                 i = (uint8_t) (atoi(token_ptr) & 1);
-                GREENLED = i;
-                nchar = snprintf(bufB, NBUFB, "L %d\n", i);
+                LED = i;
+                override_led = i;
+                nchar = snprintf(bufB, NBUFB, "/0L %d#\n", i);
             } else {
                 // There was no text to give a value.
-                nchar = snprintf(bufB, NBUFB, "L error: no value\n");
+                nchar = snprintf(bufB, NBUFB, "/0L error: no value#\n");
             }
             uart1_putstr(bufB);
             break;
@@ -247,46 +320,47 @@ void interpret_command(char* cmdStr)
                         ++j;
                         token_ptr = strtok(NULL, sep_tok);
                     }
-                    nchar = printf("DEBUG csi=%d plus Found %d bytes to send over SPI\n", csi, j);
+                    nchar = printf("/0X DEBUG csi=%d plus Found %d bytes to send over SPI#\n", csi, j);
                     select_avr(csi);
                     spi1_exch_buffers(bufC, bufD, j);
                     deselect_avr(csi);
-                    nchar = printf("DEBUG after SPI exchange\n");
-                    nchar = snprintf(bufB, NBUFB, "X");
+                    nchar = printf("/0X DEBUG after SPI exchange#\n");
+                    nchar = snprintf(bufB, NBUFB, "/0X");
                     for (i=0; i < j; ++i) {
                         nchar = snprintf(number_str, 10, " %02x", bufC[i]);
                         if ((int)strlen(bufB)+nchar > NBUFB-2) break;
                         strncat(bufB, number_str, 10);
                     }
-                    nchar = snprintf(number_str, 10, "\n");
+                    nchar = snprintf(number_str, 10, "#\n");
                     strncat(bufB, number_str, 10);
                 } else {
-                    nchar = snprintf(bufB, NBUFB, "X Exchange bytes error: no bytes given.\n");
+                    nchar = snprintf(bufB, NBUFB, "/0X Exchange bytes error: no bytes given.#\n");
                 }
             } else {
-                nchar = snprintf(bufB, NBUFB, "X Exchange bytes error: no chip selected.\n");
+                nchar = snprintf(bufB, NBUFB, "/0X Exchange bytes error: no chip selected.#\n");
             }
             uart1_putstr(bufB);
             break;
         default:
-            nchar = snprintf(bufB, NBUFB, "%c error: Unknown command.\n", cmdStr[0]);
+            nchar = snprintf(bufB, NBUFB, "/0%c error: Unknown command.#\n", cmdStr[0]);
             uart1_putstr(bufB);
     }
-} // end interpret_command()
+    if (!override_led) LED = 0; // To indicate end of interpreter activity.    
+} // end interpret_RS485_command()
 
 int main(void)
 {
     int m;
     int n;
     init_pins();
-    uart1_init(230400);
+    uart1_init(115200);
     spi1_init();
     __delay_ms(10);
     // Flash LED twice at start-up to indicate that the MCU is ready.
     for (int8_t i=0; i < 2; ++i) {
-        GREENLED = 1;
+        LED = 1;
         __delay_ms(250);
-        GREENLED = 0;
+        LED = 0;
         __delay_ms(250);
     }
     // Wait until we are reasonably sure that the AVR has restarted.
@@ -298,11 +372,12 @@ int main(void)
         // NL (Ctrl-J) signals end of incoming string.
         m = uart1_getstr(bufA, NBUFA);
         if (m > 0) {
-            // Note that the incoming string may be of zero length,
+            char* cmd = trim_RS485_command(bufA, NBUFA);
+            // Note that the cmd string may be of zero length,
             // with the null character in the first place.
             // If that is the case, do nothing with it.
-            if (*bufA) {
-                interpret_command(bufA);
+            if (*cmd) {
+                interpret_RS485_command(cmd);
             }
         }
     }

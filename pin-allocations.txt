@@ -1,20 +1,25 @@
-Pin allocations for PIC18F16Q41-I/P supervisor talking SPI to AVR64EA28
+Pin allocations for PIC18F16Q41-I/P MCU talking via SPI 
+to 5 x AVR64EA28-I/SP
+
 PJ 2024-09-05
+   2025-09-25 Update to match PCB implementation and names.
 
                  PIC18F16Q41
                 +-----v-----+
-Vsys          1 | VDD   VSS | 20           GND
-CTS1          2 | RA5   RA0 | 19       ICSPDAT
-RTS1          3 | RA4   RA1 | 18       ICSPCLK
-MCLR#         4 | RA3   RA2 | 17           LED
-CS0n          5 | RC5   RC0 | 16           TX1
-CS1n          6 | RC4   RC1 | 15           RX1
-CS2n          7 | RC3   RC2 | 14       OPA1OUT
-CS3n          8 | RC6   RB4 | 13          SDI1
-CS4n          9 | RC7   RB5 | 12          SDO1
-RESTART#     10 | RB7   RB6 | 11          SCK1
++5V           1 | VDD   VSS | 20           GND
+DATA_RDYn     2 | RA5   RA0 | 19       ICSPDAT
+LED           3 | RA4   RA1 | 18       ICSPCLK
+MCLRn         4 | RA3   RA2 | 17         TX1DE
+AVR0_CSn      5 | RC5   RC0 | 16           TX1
+AVR1_CNn      6 | RC4   RC1 | 15           RX1
+AVR2_CSn      7 | RC3   RC2 | 14    OPA1OUT/NC
+AVR3_CSn      8 | RC6   RB4 | 13     SDI1/MISO
+AVR4_CSn      9 | RC7   RB5 | 12     SDO1/MOSI
+AVR_RESETn   10 | RB7   RB6 | 11          SCK1
                 +-----------+
 
 Notes: 
-(1) OPA1OUT is kept available for providing Vmid.
+(1) OPA1OUT was kept available for providing Vmid, 
+    however (in 2025), we opted to use an external
+    rail-splitter.
 
