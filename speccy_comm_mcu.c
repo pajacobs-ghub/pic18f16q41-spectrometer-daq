@@ -4,6 +4,7 @@
 //
 // PJ, 2024-09-07: Implement the basic command interpreter.
 //     2025-09-26: Update to PCB specification.
+//     2025-10-18: Remove DEBUG messages on SPI transfers.
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -66,7 +67,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.4 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-09-26"
+#define VERSION_STR "v0.5 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-10-18"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -320,11 +321,11 @@ void interpret_RS485_command(char* cmdStr)
                         ++j;
                         token_ptr = strtok(NULL, sep_tok);
                     }
-                    nchar = printf("/0X DEBUG csi=%d plus Found %d bytes to send over SPI#\n", csi, j);
+                    // nchar = printf("/0X DEBUG csi=%d plus Found %d bytes to send over SPI#\n", csi, j);
                     select_avr(csi);
                     spi1_exch_buffers(bufC, bufD, j);
                     deselect_avr(csi);
-                    nchar = printf("/0X DEBUG after SPI exchange#\n");
+                    // nchar = printf("/0X DEBUG after SPI exchange#\n");
                     nchar = snprintf(bufB, NBUFB, "/0X");
                     for (i=0; i < j; ++i) {
                         nchar = snprintf(number_str, 10, " %02x", bufC[i]);

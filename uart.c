@@ -5,7 +5,7 @@
 // PJ,
 // 2023-12-01 PIC18F16Q41 attached to a MAX3082 RS485 transceiver
 // 2024-09-05 Return to using full-duplex and RTS/CTS with an FTDI TTL-232-5V
-// 2025-09-26 Returning the future of RS485 comms.
+// 2025-09-26 Returning to the use of RS485 comms.
 
 #include <xc.h>
 #include "global_defs.h"
