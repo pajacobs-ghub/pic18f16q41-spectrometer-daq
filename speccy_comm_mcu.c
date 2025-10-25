@@ -5,6 +5,7 @@
 // PJ, 2024-09-07: Implement the basic command interpreter.
 //     2025-09-26: Update to PCB specification.
 //     2025-10-18: Remove DEBUG messages on SPI transfers.
+//     2025-10-25: Add command 'D' to return all analog data in one message.
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -67,7 +68,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.5 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-10-18"
+#define VERSION_STR "v0.6 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-10-25"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -199,6 +200,11 @@ uint8_t bufC[NBUFC];
 // For outgoing SPI data
 #define NBUFD 32
 uint8_t bufD[NBUFD];
+// We gather the analog data as a sequence of bytes and just keep them
+// as they come from the AVR in (big-endian) order without trying to 
+// reinterpret them. 
+#define N_ANALOG_DATA_BYTES 80
+uint8_t analog_data_bytes[N_ANALOG_DATA_BYTES];
 
 int find_char(char* buf, int start, int end, char c)
 // Returns the index of the character if found, -1 otherwise.
@@ -340,6 +346,50 @@ void interpret_RS485_command(char* cmdStr)
             } else {
                 nchar = snprintf(bufB, NBUFB, "/0X Exchange bytes error: no chip selected.#\n");
             }
+            uart1_putstr(bufB);
+            break;
+        case 'D' :
+            // Gather the analog-sample data from each of the AVRs and report all
+            // 40 values in a single message.
+            //
+            // First, tell all AVRs to load their sample data into their outgoing
+            // buffer for SPI transfer.
+            for (uint8_t csi=0; csi < 5; ++csi) {
+                bufD[0] = 80; // single-character command (decimal 80)
+                bufD[1] = 0;
+                select_avr(csi);
+                spi1_exch_buffers(bufC, bufD, 2);
+                deselect_avr(csi);
+            }
+            // Allow some time for the AVRs to copy data into their buffers.
+            __delay_ms(2);
+            // Second, go get that data from each AVR.
+            // We will accumulate 5x16=80 bytes into analog_data_bytes array.
+            i = 0;
+            for (uint8_t csi=0; csi < 5; ++csi) {
+                bufD[0] = 0; // single-character "nil" command
+                // Although we are going to exchange 18 bytes,
+                // in order to get all 16 significant bytes back
+                // from the AVR, we don't care about the content
+                // being sent in the remaining part of bufD.
+                select_avr(csi);
+                spi1_exch_buffers(bufC, bufD, 18);
+                deselect_avr(csi);
+                // We ignore the first 2 bytes and keep the next 16 bytes.
+                for (j=2; j < 18; ++j) {
+                    analog_data_bytes[i] = bufC[j];
+                    ++i;
+                }
+            }
+            // Finally, write the byte data into a hex string that gets wrapped
+            // into RS485 message format and returned.
+            nchar = snprintf(bufB, NBUFB, "/0D ");
+            for (i=0; i < 80; ++i) {
+                nchar = snprintf(number_str, 10, "%02x", analog_data_bytes[i]);
+                strncat(bufB, number_str, 10);
+            }
+            nchar = snprintf(number_str, 10, "#\n");
+            strncat(bufB, number_str, 10);
             uart1_putstr(bufB);
             break;
         default:
