@@ -6,6 +6,7 @@
 //     2025-09-26: Update to PCB specification.
 //     2025-10-18: Remove DEBUG messages on SPI transfers.
 //     2025-10-25: Add command 'D' to return all analog data in one message.
+//     2025-10-26 Allow or suppress the turning on of the LED.
 //
 // CONFIG1
 #pragma config FEXTOSC = OFF
@@ -68,7 +69,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.6 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-10-25"
+#define VERSION_STR "v0.7 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-10-26"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -77,6 +78,7 @@
 
 #define LED (LATAbits.LATA4)
 uint8_t override_led = 0;
+uint8_t allow_LED = 1;
 
 #define AVR_RESETn (LATBbits.LATB7)
 
@@ -274,7 +276,7 @@ void interpret_RS485_command(char* cmdStr)
     int nchar;
     uint8_t i, j;
     char number_str[10];
-    if (!override_led) LED = 1; // To indicate start of interpreter activity.
+    if (allow_LED && !override_led) LED = 1; // To indicate start of interpreter activity.
     // nchar = printf("DEBUG: cmdStr=%s", cmdStr);
     switch (cmdStr[0]) {
         case 'v':
@@ -293,15 +295,33 @@ void interpret_RS485_command(char* cmdStr)
             nchar = snprintf(bufB, NBUFB, "/0R DAQ_MCU restarted#\n");
             uart1_putstr(bufB);
             break;
+        case 'a':
+            // Allow turning on LED.
+            allow_LED = 1;
+            nchar = snprintf(bufB, NBUFB, "/0a allow LED#\n");
+            uart1_putstr(bufB);
+            break;
+        case 's':
+            // Suppress turning on LED.
+            allow_LED = 0;
+            nchar = snprintf(bufB, NBUFB, "/0s suppress LED#\n");
+            uart1_putstr(bufB);
+            break;
         case 'L':
             // Turn (local) PIC18 LED on or off.
             token_ptr = strtok(&cmdStr[1], sep_tok);
             if (token_ptr) {
                 // Found some non-blank text; assume on/off value.
                 // Use just the least-significant bit.
-                i = (uint8_t) (atoi(token_ptr) & 1);
-                LED = i;
-                override_led = i;
+                if (allow_LED) {
+                    // We are allowed to turn on LED.
+                    i = (uint8_t) (atoi(token_ptr) & 1);
+                    LED = i;
+                    override_led = i;
+                } else {
+                    // LED is suppressed.
+                    i = 0;
+                }
                 nchar = snprintf(bufB, NBUFB, "/0L %d#\n", i);
             } else {
                 // There was no text to give a value.
