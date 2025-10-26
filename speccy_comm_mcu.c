@@ -69,7 +69,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define VERSION_STR "v0.7 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-10-26"
+#define VERSION_STR "v0.8 PIC18F16Q41 SPECTROMETER COMMS-MCU 2025-10-26"
 
 // Each device on the RS485 network has a unique single-character identity.
 // The master (PC) has identity '0'. Slave nodes may be 1-9A-Za-z.
@@ -382,7 +382,7 @@ void interpret_RS485_command(char* cmdStr)
                 deselect_avr(csi);
             }
             // Allow some time for the AVRs to copy data into their buffers.
-            __delay_ms(2);
+            __delay_us(200);
             // Second, go get that data from each AVR.
             // We will accumulate 5x16=80 bytes into analog_data_bytes array.
             i = 0;
